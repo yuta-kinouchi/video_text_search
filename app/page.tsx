@@ -10,23 +10,94 @@ import { useState } from "react";
 export default function HomePage() {
   const router = useRouter();
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [status, setStatus] = useState('');
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // ここで実際のアップロード処理を実装
-    // 進捗表示のデモとして
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 10;
-      setUploadProgress(progress);
-      if (progress >= 100) {
-        clearInterval(interval);
-        // アップロード完了後に動画一覧ページへ遷移
-        router.push('/videos');
+    try {
+      setStatus('Getting signed URL...');
+
+      // 1. 署名付きURLを取得
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          filename: `videos/${Date.now()}-${file.name}`,
+          contentType: file.type,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to get upload URL');
+
+      const { url, filename } = await response.json();
+      setStatus('Starting upload...');
+
+      // 2. Cloud Storageへアップロード
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', url, true);
+        xhr.setRequestHeader('Content-Type', file.type);
+
+        // プログレス監視
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percentComplete = (e.loaded / e.total) * 100;
+            setUploadProgress(percentComplete);
+          }
+        };
+
+        // アップロード完了時の処理
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            resolve();
+          } else {
+            reject(new Error('Upload failed'));
+          }
+        };
+
+        // エラーハンドリング
+        xhr.onerror = () => {
+          reject(new Error('Upload failed'));
+        };
+
+        // アップロード実行
+        xhr.send(file);
+      });
+
+      setStatus('Upload complete, starting processing...');
+
+      // 3. Video AI処理の開始
+      const processResponse = await fetch('/api/process-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          filename,
+          originalName: file.name,
+        }),
+      });
+
+      if (!processResponse.ok) {
+        throw new Error('Failed to start video processing');
       }
-    }, 500);
+
+      setStatus('Processing started!');
+
+      // 少し待ってから画面遷移
+      setTimeout(() => {
+        router.push('/videos');
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error:', error);
+      setStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setUploadProgress(0);
+    }
   };
 
   return (
@@ -49,13 +120,16 @@ export default function HomePage() {
                 onChange={handleFileUpload}
                 className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
               />
-              {uploadProgress > 0 && uploadProgress < 100 && (
+              {uploadProgress > 0 && (
                 <div className="space-y-2">
                   <Progress value={uploadProgress} />
                   <p className="text-sm text-muted-foreground">
-                    Processing: {uploadProgress}%
+                    {status} ({Math.round(uploadProgress)}%)
                   </p>
                 </div>
+              )}
+              {status && uploadProgress === 0 && (
+                <p className="text-sm text-muted-foreground">{status}</p>
               )}
             </div>
           </Card>

@@ -1,161 +1,152 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import type { SearchResult, Video } from "@/lib/types";
-import { Play, Search } from "lucide-react";
-import { useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Search, Video } from "lucide-react";
+import { useEffect, useState } from "react";
+
+interface VideoMetadata {
+  id: string;
+  filename: string;
+  originalName: string;
+  url: string;
+  createdAt: string;
+  labels: string[];
+  transcript: string;
+  textDetections: string[];
+}
 
 export default function VideosPage() {
-  const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
+  const [videos, setVideos] = useState<VideoMetadata[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [filteredVideos, setFilteredVideos] = useState<VideoMetadata[]>([]);
 
-  // デモ用の動画一覧
-  const videos: Video[] = [
-    {
-      id: "1",
-      title: "Sample Video 1",
-      url: "/sample1.mp4",
-      createdAt: "2024-01-01",
-      status: "completed"
-    },
-    {
-      id: "2",
-      title: "Sample Video 2",
-      url: "/sample2.mp4",
-      createdAt: "2024-01-02",
-      status: "processing"
+  useEffect(() => {
+    fetchVideos();
+  }, []);
+
+  useEffect(() => {
+    filterVideos();
+  }, [searchQuery, videos]);
+
+  const fetchVideos = async () => {
+    try {
+      const response = await fetch("/api/videos");
+      if (!response.ok) throw new Error("Failed to fetch videos");
+      const data = await response.json();
+      setVideos(data.videos);
+    } catch (error) {
+      console.error("Error fetching videos:", error);
+    } finally {
+      setIsLoading(false);
     }
-  ];
+  };
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentVideo) return;
+  const filterVideos = () => {
+    if (!searchQuery.trim()) {
+      setFilteredVideos(videos);
+      return;
+    }
 
-    // 実際の検索処理をここに実装
-    setSearchResults([
-      {
-        timestamp: 15,
-        confidence: 0.85,
-        preview: "Content at 0:15",
-      },
-      {
-        timestamp: 45,
-        confidence: 0.92,
-        preview: "Content at 0:45",
-      },
-    ]);
+    const query = searchQuery.toLowerCase();
+    const filtered = videos.filter((video) => {
+      const searchableContent = [
+        video.originalName.toLowerCase(),
+        ...(video.labels || []).map((label) => label.toLowerCase()),
+        (video.transcript || "").toLowerCase(),
+        ...(video.textDetections || []).map((text) => text.toLowerCase()),
+      ].join(" ");
+
+      return searchableContent.includes(query);
+    });
+
+    setFilteredVideos(filtered);
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-4xl font-bold text-center mb-8 text-gray-800 dark:text-gray-100">
-          My Videos
-        </h1>
-
-        <div className="grid gap-8 md:grid-cols-2">
-          {/* Video List */}
-          <Card className="p-6">
-            <h2 className="text-2xl font-semibold mb-4">Video Library</h2>
-            <div className="space-y-4">
-              {videos.map((video) => (
-                <div
-                  key={video.id}
-                  className="flex items-center justify-between p-4 rounded-lg bg-secondary cursor-pointer hover:bg-secondary/80"
-                  onClick={() => setCurrentVideo(video)}
-                >
-                  <div>
-                    <p className="font-medium">{video.title}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {video.createdAt}
-                    </p>
-                  </div>
-                  <div className="text-sm font-medium">
-                    {video.status === "processing" ? (
-                      <span className="text-yellow-500">Processing</span>
-                    ) : (
-                      <span className="text-green-500">Ready</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Search Section */}
-          <Card className="p-6">
-            <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-              <Search className="w-6 h-6" />
-              Search Content
-            </h2>
-            <form onSubmit={handleSearch} className="space-y-4">
-              <div className="flex gap-2">
-                <Input
-                  type="text"
-                  placeholder="Search in video..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  disabled={!currentVideo}
-                />
-                <Button type="submit" disabled={!currentVideo}>
-                  Search
-                </Button>
-              </div>
-            </form>
-          </Card>
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-4xl font-bold text-gray-800 dark:text-gray-100">
+            Videos
+          </h1>
+          <div className="relative w-64">
+            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+            <Input
+              type="search"
+              placeholder="Search videos..."
+              className="pl-8"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
         </div>
 
-        {/* Video Player */}
-        {currentVideo && (
-          <Card className="mt-8 p-6">
-            <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-              <Play className="w-6 h-6" />
-              {currentVideo.title}
-            </h2>
-            <video
-              src={currentVideo.url}
-              controls
-              className="w-full rounded-lg"
-            ></video>
-          </Card>
-        )}
-
-        {/* Search Results */}
-        {searchResults.length > 0 && (
-          <Card className="mt-8 p-6">
-            <h2 className="text-2xl font-semibold mb-4">Search Results</h2>
-            <div className="space-y-4">
-              {searchResults.map((result, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-4 rounded-lg bg-secondary"
-                >
-                  <div>
-                    <p className="font-medium">{result.preview}</p>
-                    <p className="text-sm text-muted-foreground">
-                      Confidence: {(result.confidence * 100).toFixed(1)}%
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const video = document.querySelector("video");
-                      if (video) {
-                        video.currentTime = result.timestamp;
-                        video.play();
-                      }
-                    }}
-                  >
-                    Jump to {Math.floor(result.timestamp / 60)}:
-                    {(result.timestamp % 60).toString().padStart(2, "0")}
-                  </Button>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {isLoading
+            ? Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i} className="overflow-hidden">
+                <Skeleton className="h-48 w-full" />
+                <CardContent className="p-4">
+                  <Skeleton className="h-4 w-3/4 mb-2" />
+                  <Skeleton className="h-3 w-1/2" />
+                </CardContent>
+              </Card>
+            ))
+            : filteredVideos.map((video) => (
+              <Card key={video.id} className="overflow-hidden">
+                <div className="relative aspect-video bg-gray-100 dark:bg-gray-800">
+                  <video
+                    src={video.url}
+                    controls
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
                 </div>
-              ))}
-            </div>
-          </Card>
+                <CardContent className="p-4">
+                  <h3 className="font-semibold mb-2 line-clamp-1">
+                    {video.originalName}
+                  </h3>
+                  {video.labels && video.labels.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+                        Labels:
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {video.labels.slice(0, 5).map((label, index) => (
+                          <span
+                            key={index}
+                            className="inline-block px-2 py-1 text-xs rounded-full bg-gray-100 dark:bg-gray-700"
+                          >
+                            {label}
+                          </span>
+                        ))}
+                        {video.labels.length > 5 && (
+                          <span className="inline-block px-2 py-1 text-xs rounded-full bg-gray-100 dark:bg-gray-700">
+                            +{video.labels.length - 5}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+        </div>
+
+        {!isLoading && filteredVideos.length === 0 && (
+          <div className="text-center py-12">
+            <Video className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+              No videos found
+            </h3>
+            <p className="text-gray-500 dark:text-gray-400">
+              {videos.length === 0
+                ? "Upload your first video to get started"
+                : "Try adjusting your search query"}
+            </p>
+          </div>
         )}
       </div>
     </div>
